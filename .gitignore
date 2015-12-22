@@ -1,0 +1,12 @@
+# Ignore Mac files
+.DS_Store
+
+# Ignore IntelliJ files
+*.iml
+.idea/
+
+# Ignore build output
+build/
+
+#Ignore gradle local files
+.gradle/
