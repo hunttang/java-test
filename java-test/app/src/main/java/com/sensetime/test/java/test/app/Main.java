@@ -1,4 +1,4 @@
-package com.sensetime.test;
+package com.sensetime.test.java.test.app;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;

@@ -1,2 +1,2 @@
-# java-test
-For test of Java Application
+# test
+For test projects

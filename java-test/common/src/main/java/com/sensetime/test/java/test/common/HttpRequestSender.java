@@ -1,4 +1,4 @@
-package com.sensetime.test;
+package com.sensetime.test.java.test.common;
 
 import org.apache.http.NameValuePair;
 import org.apache.http.client.entity.EntityBuilder;

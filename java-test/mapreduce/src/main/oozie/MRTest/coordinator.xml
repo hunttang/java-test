@@ -1,0 +1,32 @@
+<coordinator-app name="MRTest" frequency="${coord:days(1)}" start="${tzStart}" end="${tzEnd}" timezone="${timezone}"
+                 xmlns="uri:oozie:coordinator:0.2">
+    <controls>
+        <timeout>${timeout}</timeout>
+        <concurrency>${concurrency}</concurrency>
+        <execution>${execution}</execution>
+    </controls>
+
+    <action>
+        <workflow>
+            <app-path>${coordinatorPath}/workflow</app-path>
+            <configuration>
+                <property>
+                    <name>jobTracker</name>
+                    <value>${jobTracker}</value>
+                </property>
+                <property>
+                    <name>nameNode</name>
+                    <value>${nameNode}</value>
+                </property>
+                <property>
+                    <name>queueName</name>
+                    <value>${queueName}</value>
+                </property>
+                <property>
+                    <name>defaultReduceTasks</name>
+                    <value>${defaultReduceTasks}</value>
+                </property>
+            </configuration>
+        </workflow>
+    </action>
+</coordinator-app>

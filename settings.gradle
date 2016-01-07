@@ -1,2 +1,6 @@
 rootProject.name = 'test'
-
+include 'java-test'
+include 'java-test:common'
+include 'java-test:app'
+include 'java-test:mapreduce'
+include 'java-test:spark'
