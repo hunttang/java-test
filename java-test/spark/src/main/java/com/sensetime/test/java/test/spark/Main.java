@@ -25,7 +25,6 @@ public class Main {
     private static SparkConf sparkConf = new SparkConf().setAppName("SparkTest").setMaster("local");
 
     public static void main(String[] args) {
-
         sparkStreamingTest(args);
     }
 

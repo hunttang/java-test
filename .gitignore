@@ -8,5 +8,6 @@
 # Ignore build output
 build/
 
-#Ignore gradle local files
+# Ignore some gradle files
 .gradle/
+gradlew.bat

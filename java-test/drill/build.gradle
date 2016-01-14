@@ -1,0 +1,20 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'com.github.johnrengelman.shadow' version '1.2.2'
+}
+
+shadowJar {
+    zip64 true
+}
+
+defaultTasks 'clean', 'shadowJar'
+
+mainClassName = 'com.sensetime.test.java.test.drill.Main'
+
+dependencies {
+    compile project(':java-test:common')
+
+    compile 'org.apache.drill.exec:drill-jdbc-all:1.4.0'
+    compile 'org.apache.hbase:hbase-common:1.1.2'
+}
