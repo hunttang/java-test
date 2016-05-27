@@ -7,8 +7,14 @@ import com.google.gson.JsonObject;
 import net.lingala.zip4j.exception.ZipException;
 import net.lingala.zip4j.model.ZipParameters;
 import net.lingala.zip4j.util.Zip4jConstants;
+import org.apache.commons.httpclient.HttpClient;
+import org.apache.commons.httpclient.NameValuePair;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
+import org.apache.http.client.methods.*;
+import org.apache.http.client.utils.URIBuilder;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
 
 import java.io.*;
 import java.util.ArrayList;
@@ -23,6 +29,24 @@ import java.util.zip.ZipOutputStream;
  */
 public class Main {
     public static void main(String[] args) throws Exception {
+        CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+
+        /*
+        URIBuilder uri = new URIBuilder();
+
+        uri.setScheme("http");
+        uri.setHost("www.originpoker.com");
+        uri.setPort(80);
+        uri.setPath("/UpdateAPK/1_1.apk");
+
+        HttpUriRequest httpRequest = new HttpGet(uri.build());
+        */
+        HttpUriRequest httpRequest = new HttpGet("http://www.originpoker.com/UpdateAPK/1_1.apk");
+
+        CloseableHttpResponse response = httpClient.execute(httpRequest);
+
+        System.out.println(response.getStatusLine());
+        System.out.println(response.getEntity().getContentLength());
     }
 
     private static void testEncryptedZipFile() throws IOException, ZipException {

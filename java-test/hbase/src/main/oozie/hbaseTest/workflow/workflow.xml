@@ -1,0 +1,27 @@
+<workflow-app xmlns="uri:oozie:workflow:0.5" name="sparkOozieTest">
+    <global>
+        <job-tracker>${jobTracker}</job-tracker>
+        <name-node>${nameNode}</name-node>
+    </global>
+    <start to="sparkTest"/>
+
+    <action name="sparkTest">
+        <spark xmlns="uri:oozie:spark-action:0.1">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <master>yarn-cluster</master>
+            <name>SparkPi</name>
+            <class>org.apache.spark.examples.JavaSparkPi</class>
+            <jar>${nameNode}/sparkOozieTest/workflow/lib/spark-examples-1.5.1-hadoop2.6.0.jar</jar>
+            <arg>10</arg>
+        </spark>
+        <ok to="end"/>
+        <error to="fail"/>
+    </action>
+
+    <kill name="fail">
+        <message>Action failed, error message [${wf:errorMessage(wf:lastErrorNode())}]</message>
+    </kill>
+
+    <end name="end"/>
+</workflow-app>
