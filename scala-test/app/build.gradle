@@ -1,5 +1,5 @@
 plugins {
-    id 'java'
+    id 'scala'
     id 'application'
     id 'com.github.johnrengelman.shadow' version '1.2.4'
 }
@@ -10,12 +10,10 @@ shadowJar {
 
 defaultTasks 'clean', 'shadowJar'
 
-mainClassName = 'com.sensetime.test.java.test.mapreduce.TestRunner'
+mainClassName = 'com.sensetime.test.scala.test.app.Main'
 
 dependencies {
-    compile project(':java-test:common')
-
     compile 'org.apache.hadoop:hadoop-client:2.7.1'
-    compile 'org.apache.hadoop:hadoop-mapreduce-client-shuffle:2.7.1'
+    compile 'org.apache.hbase:hbase-client:1.1.2'
+    compile 'net.lingala.zip4j:zip4j:1.3.2'
 }
-
