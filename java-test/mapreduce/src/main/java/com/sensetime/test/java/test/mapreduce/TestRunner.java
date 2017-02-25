@@ -1,5 +1,6 @@
 package com.sensetime.test.java.test.mapreduce;
 
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
@@ -14,13 +15,13 @@ import org.apache.hadoop.util.ToolRunner;
 
 public class TestRunner extends Configured implements Tool {
     public int run(String[] args) throws Exception {
-        String input = args[0];
-        String output = args[1];
+        final Configuration conf = getConf();
+        final Job job = Job.getInstance(conf, this.getClass().toString());
 
-        final Job job = Job.getInstance();
-
-        job.setJobName("Test");
         job.setJarByClass(TestRunner.class);
+
+        String input = conf.get("input");
+        String output = conf.get("output");
 
         job.setMapperClass(TestMapper.class);
         job.setCombinerClass(TestReducer.class);

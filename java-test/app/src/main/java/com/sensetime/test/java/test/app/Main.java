@@ -1,9 +1,6 @@
 package com.sensetime.test.java.test.app;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
+import com.google.gson.*;
 import net.lingala.zip4j.exception.ZipException;
 import net.lingala.zip4j.model.ZipParameters;
 import net.lingala.zip4j.util.Zip4jConstants;
@@ -17,9 +14,7 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 
 import java.io.*;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -29,24 +24,38 @@ import java.util.zip.ZipOutputStream;
  */
 public class Main {
     public static void main(String[] args) throws Exception {
-        CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+        String filename = "/Users/hunttang/Temp/temp.txt";
+        BufferedReader reader = new BufferedReader(new FileReader(filename));
 
-        /*
-        URIBuilder uri = new URIBuilder();
+        List<Long> tsList = new ArrayList<>();
+        for (int i = 0; i < 10; ++i) {
+            String line = reader.readLine();
+            JsonArray jsonArray = new Gson().fromJson(line, JsonObject.class).getAsJsonArray("miuiMarks");
+            for (JsonElement element : jsonArray) {
+                if (element.getAsJsonObject().get("catId").getAsInt() != 7) {
+                    continue;
+                }
+                JsonArray titles = element.getAsJsonObject().getAsJsonArray("catTitle");
+                JsonArray timestamps = element.getAsJsonObject().getAsJsonArray("createTime");
 
-        uri.setScheme("http");
-        uri.setHost("www.originpoker.com");
-        uri.setPort(80);
-        uri.setPath("/UpdateAPK/1_1.apk");
+                for (int j = 0; j < titles.size(); ++j) {
+                    JsonElement titleEle = titles.get(j);
+                    if (!titleEle.isJsonNull()) {
+                        if (titleEle.getAsString().contains("骚扰")) {
+                            tsList.add(timestamps.get(j).getAsLong());
+                        }
+                    }
+                }
+            }
+        }
 
-        HttpUriRequest httpRequest = new HttpGet(uri.build());
-        */
-        HttpUriRequest httpRequest = new HttpGet("http://www.originpoker.com/UpdateAPK/1_1.apk");
+        Collections.sort(tsList);
 
-        CloseableHttpResponse response = httpClient.execute(httpRequest);
+        System.out.println(tsList.get(0));
+        System.out.println(new Date(tsList.get(0)).toString());
 
-        System.out.println(response.getStatusLine());
-        System.out.println(response.getEntity().getContentLength());
+        System.out.println(tsList.get(tsList.size() - 1));
+        System.out.println(new Date(tsList.get(tsList.size() - 1)).toString());
     }
 
     private static void testEncryptedZipFile() throws IOException, ZipException {
