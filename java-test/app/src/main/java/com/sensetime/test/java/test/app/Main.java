@@ -1,6 +1,9 @@
 package com.sensetime.test.java.test.app;
 
+import com.google.common.primitives.Bytes;
+import com.google.common.primitives.Longs;
 import com.google.gson.*;
+import com.sensetime.test.java.test.common.HttpRequestSender;
 import net.lingala.zip4j.exception.ZipException;
 import net.lingala.zip4j.model.ZipParameters;
 import net.lingala.zip4j.util.Zip4jConstants;
@@ -8,12 +11,23 @@ import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.NameValuePair;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
+import org.apache.http.HttpEntity;
 import org.apache.http.client.methods.*;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
+import org.joda.time.DateTime;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
+import org.joda.time.format.ISODateTimeFormat;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.select.Elements;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
@@ -24,38 +38,46 @@ import java.util.zip.ZipOutputStream;
  */
 public class Main {
     public static void main(String[] args) throws Exception {
-        String filename = "/Users/hunttang/Temp/temp.txt";
-        BufferedReader reader = new BufferedReader(new FileReader(filename));
+    }
 
-        List<Long> tsList = new ArrayList<>();
-        for (int i = 0; i < 10; ++i) {
-            String line = reader.readLine();
-            JsonArray jsonArray = new Gson().fromJson(line, JsonObject.class).getAsJsonArray("miuiMarks");
-            for (JsonElement element : jsonArray) {
-                if (element.getAsJsonObject().get("catId").getAsInt() != 7) {
+    private static void webCrawler() throws Exception {
+        HttpRequestSender sender = new HttpRequestSender();
+        HashMap<HttpRequestSender.ArgsKey, Object> requestArgs = new HashMap<>();
+        requestArgs.put(HttpRequestSender.ArgsKey.TIMEOUT, 60 * 1000);
+
+        int seed = 3467;
+        int continuousFailure = 0;
+        int succeeded = 1136;
+        while (true) {
+            requestArgs.put(HttpRequestSender.ArgsKey.TYPE, HttpRequestSender.Type.GET);
+            requestArgs.put(HttpRequestSender.ArgsKey.HOST, "www.10why.net");
+            requestArgs.put(HttpRequestSender.ArgsKey.PATH, String.format("/post/%d.html", ++seed));
+
+            try (CloseableHttpResponse response = sender.send(requestArgs);
+                 FileOutputStream stream = new FileOutputStream(String.format("/Users/hunttang/Documents/10why/%d.html", succeeded))) {
+                if (response == null) {
                     continue;
                 }
-                JsonArray titles = element.getAsJsonObject().getAsJsonArray("catTitle");
-                JsonArray timestamps = element.getAsJsonObject().getAsJsonArray("createTime");
 
-                for (int j = 0; j < titles.size(); ++j) {
-                    JsonElement titleEle = titles.get(j);
-                    if (!titleEle.isJsonNull()) {
-                        if (titleEle.getAsString().contains("骚扰")) {
-                            tsList.add(timestamps.get(j).getAsLong());
-                        }
+                System.out.println(String.format("%d returned %d.", seed, response.getStatusLine().getStatusCode()));
+
+                if (response.getStatusLine().getStatusCode() != 200) {
+                    if (++continuousFailure > 500) {
+                        break;
                     }
+                    continue;
                 }
+                continuousFailure = 0;
+
+                response.getEntity().writeTo(stream);
+                succeeded++;
+            }
+            catch (Exception e) {
+                System.out.println(e.getMessage());
             }
         }
 
-        Collections.sort(tsList);
-
-        System.out.println(tsList.get(0));
-        System.out.println(new Date(tsList.get(0)).toString());
-
-        System.out.println(tsList.get(tsList.size() - 1));
-        System.out.println(new Date(tsList.get(tsList.size() - 1)).toString());
+        System.out.println("Finished.");
     }
 
     private static void testEncryptedZipFile() throws IOException, ZipException {

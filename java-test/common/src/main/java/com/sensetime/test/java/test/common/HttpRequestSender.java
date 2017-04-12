@@ -1,6 +1,7 @@
 package com.sensetime.test.java.test.common;
 
 import org.apache.http.NameValuePair;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.entity.EntityBuilder;
 import org.apache.http.client.methods.*;
 import org.apache.http.client.utils.URIBuilder;
@@ -22,7 +23,7 @@ import java.util.List;
  * @author Hunt
  */
 public class HttpRequestSender {
-    public enum ArgsKey {TYPE, SCHEME, HOST, PORT, PATH, PARAM, ENTITY_TYPE, ENTITY, CONTENT_TYPE}
+    public enum ArgsKey {TYPE, SCHEME, HOST, PORT, PATH, PARAM, TIMEOUT, ENTITY_TYPE, ENTITY, CONTENT_TYPE}
 
     public enum Type {GET, POST, DELETE}
 
@@ -62,15 +63,31 @@ public class HttpRequestSender {
 
             Type type = (Type)requestArgs.get(ArgsKey.TYPE);
 
+            Integer timeout = 0;
+            if (requestArgs.containsKey(ArgsKey.TIMEOUT)) {
+                timeout = (Integer)requestArgs.get(ArgsKey.TIMEOUT);
+            }
+            RequestConfig config = RequestConfig.custom()
+                    .setConnectTimeout(timeout)
+                    .setConnectionRequestTimeout(timeout)
+                    .setSocketTimeout(timeout)
+                    .build();
+
             HttpUriRequest httpRequest;
             if (type == Type.GET) {
-                httpRequest = new HttpGet(uri.build());
+                HttpGet httpGet = new HttpGet(uri.build());
+                httpGet.setConfig(config);
+                httpRequest = httpGet;
             }
             else if (type == Type.DELETE) {
-                httpRequest = new HttpDelete(uri.build());
+                HttpDelete httpDelete = new HttpDelete(uri.build());
+                httpDelete.setConfig(config);
+                httpRequest = httpDelete;
             }
             else if (type == Type.POST) {
-                httpRequest = new HttpPost(uri.build());
+                HttpPost httpPost = new HttpPost(uri.build());
+                httpPost.setConfig(config);
+                httpRequest = httpPost;
                 if (!setEntityByType((HttpPost)httpRequest, (EntityType)requestArgs.get(ArgsKey.ENTITY_TYPE),
                         requestArgs.get(ArgsKey.ENTITY), (ContentType)requestArgs.get(ArgsKey.CONTENT_TYPE))) {
                     return null;
@@ -90,8 +107,8 @@ public class HttpRequestSender {
         return null;
     }
 
-    private boolean setEntityByType(final HttpEntityEnclosingRequestBase httpRequest, final EntityType entityType,
-                                    final Object entity, final ContentType contentType) {
+    private boolean setEntityByType(final HttpEntityEnclosingRequestBase httpRequest, final EntityType entityType, final Object entity,
+                                    final ContentType contentType) {
         // If none of these 3 variables is set, consider it as blank entity
         if (entityType == null && entity == null && contentType == null) {
             return true;
