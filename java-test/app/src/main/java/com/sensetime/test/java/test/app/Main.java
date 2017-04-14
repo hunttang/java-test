@@ -11,6 +11,7 @@ import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.NameValuePair;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.client.methods.*;
 import org.apache.http.client.utils.URIBuilder;
@@ -30,6 +31,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -38,42 +40,46 @@ import java.util.zip.ZipOutputStream;
  */
 public class Main {
     public static void main(String[] args) throws Exception {
+        webCrawler();
     }
 
     private static void webCrawler() throws Exception {
+        Pattern reg = Pattern.compile("[\r\n]");
+
         HttpRequestSender sender = new HttpRequestSender();
         HashMap<HttpRequestSender.ArgsKey, Object> requestArgs = new HashMap<>();
         requestArgs.put(HttpRequestSender.ArgsKey.TIMEOUT, 60 * 1000);
 
-        int seed = 3467;
-        int continuousFailure = 0;
-        int succeeded = 1136;
-        while (true) {
-            requestArgs.put(HttpRequestSender.ArgsKey.TYPE, HttpRequestSender.Type.GET);
-            requestArgs.put(HttpRequestSender.ArgsKey.HOST, "www.10why.net");
-            requestArgs.put(HttpRequestSender.ArgsKey.PATH, String.format("/post/%d.html", ++seed));
+        try (FileWriter writer = new FileWriter("/Users/hunttang/Documents/baike.txt");
+             FileWriter writerUnhandled = new FileWriter("/Users/hunttang/Documents/unhandled.txt");
+             BufferedReader reader = new BufferedReader(new FileReader("/Users/hunttang/Documents/baikeWords.txt"))) {
+            String word = reader.readLine();
+            while (word != null) {
+                word = word.trim();
 
-            try (CloseableHttpResponse response = sender.send(requestArgs);
-                 FileOutputStream stream = new FileOutputStream(String.format("/Users/hunttang/Documents/10why/%d.html", succeeded))) {
-                if (response == null) {
-                    continue;
-                }
+                requestArgs.put(HttpRequestSender.ArgsKey.TYPE, HttpRequestSender.Type.GET);
+                requestArgs.put(HttpRequestSender.ArgsKey.HOST, "baike.baidu.com");
+                requestArgs.put(HttpRequestSender.ArgsKey.PATH, String.format("/item/%s", word));
 
-                System.out.println(String.format("%d returned %d.", seed, response.getStatusLine().getStatusCode()));
-
-                if (response.getStatusLine().getStatusCode() != 200) {
-                    if (++continuousFailure > 500) {
-                        break;
+                try (CloseableHttpResponse response = sender.send(requestArgs)) {
+                    if (response == null || response.getStatusLine().getStatusCode() != 200) {
+                        writerUnhandled.write(String.format("%s\n", word));
+                        continue;
                     }
-                    continue;
-                }
-                continuousFailure = 0;
 
-                response.getEntity().writeTo(stream);
-                succeeded++;
-            }
-            catch (Exception e) {
-                System.out.println(e.getMessage());
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    response.getEntity().writeTo(baos);
+                    String line = reg.matcher(baos.toString()).replaceAll("");
+
+                    writer.write(String.format("%s\n", line));
+                }
+                catch (Exception e) {
+                    writerUnhandled.write(String.format("%s\n", word));
+                    System.out.println(e.getMessage());
+                }
+                finally {
+                    word = reader.readLine();
+                }
             }
         }
 
