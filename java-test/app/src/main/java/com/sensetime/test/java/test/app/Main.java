@@ -45,25 +45,35 @@ public class Main {
 
     private static void webCrawler() throws Exception {
         Pattern reg = Pattern.compile("[\r\n]");
+        Pattern errorReg = Pattern.compile(".*<h1 class=\"baikeLogo\">[\\p{Blank}]*百度百科错误页[\\p{Blank}]*</h1>.*");
 
         HttpRequestSender sender = new HttpRequestSender();
         HashMap<HttpRequestSender.ArgsKey, Object> requestArgs = new HashMap<>();
-        requestArgs.put(HttpRequestSender.ArgsKey.TIMEOUT, 60 * 1000);
+        requestArgs.put(HttpRequestSender.ArgsKey.TIMEOUT, 1000);
 
-        try (FileWriter writer = new FileWriter("/Users/hunttang/Documents/baike.txt");
-             FileWriter writerUnhandled = new FileWriter("/Users/hunttang/Documents/unhandled.txt");
-             BufferedReader reader = new BufferedReader(new FileReader("/Users/hunttang/Documents/baikeWords.txt"))) {
-            String word = reader.readLine();
-            while (word != null) {
-                word = word.trim();
+        try (FileWriter writerUnhandled = new FileWriter("D:\\Software\\baike\\unhandled.txt", true)) {
+            int fileCount = 151;
+            FileWriter writer = null;
+
+            for (int i = 1510000; i < 20000000; ++i) {
+                if (i % 1000 == 0) {
+                    System.out.println(String.format("%s\tProcessed %dk words.", DateTime.now().toString(), i / 1000));
+                    if (i % 10000 == 0) {
+                        if (writer != null) {
+                            writer.close();
+                        }
+                        writerUnhandled.flush();
+                        writer = new FileWriter(String.format("D:\\Software\\baike\\baike%d.txt", fileCount++));
+                    }
+                }
 
                 requestArgs.put(HttpRequestSender.ArgsKey.TYPE, HttpRequestSender.Type.GET);
                 requestArgs.put(HttpRequestSender.ArgsKey.HOST, "baike.baidu.com");
-                requestArgs.put(HttpRequestSender.ArgsKey.PATH, String.format("/item/%s", word));
+                requestArgs.put(HttpRequestSender.ArgsKey.PATH, String.format("/view/%d", i));
 
                 try (CloseableHttpResponse response = sender.send(requestArgs)) {
                     if (response == null || response.getStatusLine().getStatusCode() != 200) {
-                        writerUnhandled.write(String.format("%s\n", word));
+                        writerUnhandled.write(String.format("%d\n", i));
                         continue;
                     }
 
@@ -71,15 +81,20 @@ public class Main {
                     response.getEntity().writeTo(baos);
                     String line = reg.matcher(baos.toString()).replaceAll("");
 
+                    if (errorReg.matcher(line).matches()) {
+                        writerUnhandled.write(String.format("%d\n", i));
+                        continue;
+                    }
                     writer.write(String.format("%s\n", line));
                 }
                 catch (Exception e) {
-                    writerUnhandled.write(String.format("%s\n", word));
+                    writerUnhandled.write(String.format("%d\n", i));
                     System.out.println(e.getMessage());
                 }
-                finally {
-                    word = reader.readLine();
-                }
+            }
+
+            if (writer != null) {
+                writer.close();
             }
         }
 
