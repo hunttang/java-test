@@ -39,66 +39,97 @@ import java.util.zip.ZipOutputStream;
  * Created by Hunt on 9/1/15.
  */
 public class Main {
-    public static void main(String[] args) throws Exception {
-        webCrawler();
-    }
+    private static class WebCrawler extends Thread {
+        private int fileNumberStart;
+        private int webPageNumberStart;
+        private int webPageNumberEnd;
+        private int webPageCountPerFile;
 
-    private static void webCrawler() throws Exception {
-        Pattern reg = Pattern.compile("[\r\n]");
-        Pattern errorReg = Pattern.compile(".*<h1 class=\"baikeLogo\">[\\p{Blank}]*百度百科错误页[\\p{Blank}]*</h1>.*");
-
-        HttpRequestSender sender = new HttpRequestSender();
-        HashMap<HttpRequestSender.ArgsKey, Object> requestArgs = new HashMap<>();
-        requestArgs.put(HttpRequestSender.ArgsKey.TIMEOUT, 1000);
-
-        try (FileWriter writerUnhandled = new FileWriter("D:\\Software\\baike\\unhandled.txt", true)) {
-            int fileCount = 151;
-            FileWriter writer = null;
-
-            for (int i = 1510000; i < 20000000; ++i) {
-                if (i % 1000 == 0) {
-                    System.out.println(String.format("%s\tProcessed %dk words.", DateTime.now().toString(), i / 1000));
-                    if (i % 10000 == 0) {
-                        if (writer != null) {
-                            writer.close();
-                        }
-                        writerUnhandled.flush();
-                        writer = new FileWriter(String.format("D:\\Software\\baike\\baike%d.txt", fileCount++));
-                    }
-                }
-
-                requestArgs.put(HttpRequestSender.ArgsKey.TYPE, HttpRequestSender.Type.GET);
-                requestArgs.put(HttpRequestSender.ArgsKey.HOST, "baike.baidu.com");
-                requestArgs.put(HttpRequestSender.ArgsKey.PATH, String.format("/view/%d", i));
-
-                try (CloseableHttpResponse response = sender.send(requestArgs)) {
-                    if (response == null || response.getStatusLine().getStatusCode() != 200) {
-                        writerUnhandled.write(String.format("%d\n", i));
-                        continue;
-                    }
-
-                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                    response.getEntity().writeTo(baos);
-                    String line = reg.matcher(baos.toString()).replaceAll("");
-
-                    if (errorReg.matcher(line).matches()) {
-                        writerUnhandled.write(String.format("%d\n", i));
-                        continue;
-                    }
-                    writer.write(String.format("%s\n", line));
-                }
-                catch (Exception e) {
-                    writerUnhandled.write(String.format("%d\n", i));
-                    System.out.println(e.getMessage());
-                }
-            }
-
-            if (writer != null) {
-                writer.close();
-            }
+        public WebCrawler(int fileNumberStart, int webPageNumberStart, int webPageNumberEnd, int webPageCountPerFile) {
+            super();
+            init(fileNumberStart, webPageNumberStart, webPageNumberEnd, webPageCountPerFile);
         }
 
-        System.out.println("Finished.");
+        public WebCrawler(int fileNumberStart, int webPageNumberStart, int webPageNumberEnd, int webPageCountPerFile, String name) {
+            super(name);
+            init(fileNumberStart, webPageNumberStart, webPageNumberEnd, webPageCountPerFile);
+        }
+
+        private void init(int fileNumberStart, int webPageNumberStart, int webPageNumberEnd, int webPageCountPerFile) {
+            this.fileNumberStart = fileNumberStart;
+            this.webPageNumberStart = webPageNumberStart;
+            this.webPageNumberEnd = webPageNumberEnd;
+            this.webPageCountPerFile = webPageCountPerFile;
+        }
+
+        @Override
+        public void run() {
+            Pattern reg = Pattern.compile("[\r\n]");
+            Pattern errorReg = Pattern.compile(".*<h1 class=\"baikeLogo\">[\\p{Blank}]*百度百科错误页[\\p{Blank}]*</h1>.*");
+
+            HttpRequestSender sender = new HttpRequestSender();
+            HashMap<HttpRequestSender.ArgsKey, Object> requestArgs = new HashMap<>();
+            requestArgs.put(HttpRequestSender.ArgsKey.TIMEOUT, 1000);
+
+            try (FileWriter writerUnhandled = new FileWriter("D:\\Software\\baike\\unhandled.txt", true)) {
+                int fileCount = fileNumberStart;
+                FileWriter writer = null;
+
+                for (int i = webPageNumberStart; i < webPageNumberEnd; ++i) {
+                    if (i % 1000 == 0) {
+                        System.out.println(String.format("%s: %s\tProcessed %dk words.", getName(), DateTime.now().toString(), i / 1000));
+                        if (i % webPageCountPerFile == 0) {
+                            if (writer != null) {
+                                writer.close();
+                            }
+                            writerUnhandled.flush();
+                            writer = new FileWriter(String.format("D:\\Software\\baike\\baike%d.txt", fileCount++));
+                        }
+                    }
+
+                    requestArgs.put(HttpRequestSender.ArgsKey.TYPE, HttpRequestSender.Type.GET);
+                    requestArgs.put(HttpRequestSender.ArgsKey.HOST, "baike.baidu.com");
+                    requestArgs.put(HttpRequestSender.ArgsKey.PATH, String.format("/view/%d", i));
+
+                    try (CloseableHttpResponse response = sender.send(requestArgs)) {
+                        if (response == null || response.getStatusLine().getStatusCode() != 200) {
+                            writerUnhandled.write(String.format("%d\n", i));
+                            continue;
+                        }
+
+                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                        response.getEntity().writeTo(baos);
+                        String line = reg.matcher(baos.toString()).replaceAll("");
+
+                        if (errorReg.matcher(line).matches()) {
+                            writerUnhandled.write(String.format("%d\n", i));
+                            continue;
+                        }
+                        writer.write(String.format("%s\n", line));
+                    }
+                    catch (Exception e) {
+                        writerUnhandled.write(String.format("%d\n", i));
+                        System.out.println(String.format("%s: %s", getName(), e.getMessage()));
+                    }
+                }
+
+                if (writer != null) {
+                    writer.close();
+                }
+            }
+            catch (IOException e) {
+                System.out.println(String.format("%s: %s", getName(), e.getMessage()));
+            }
+
+            System.out.println(String.format("%s: finished!", getName()));
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        WebCrawler webCrawler1 = new WebCrawler(271, 2710000, 3000000, 10000, "crawler1");
+        WebCrawler webCrawler2 = new WebCrawler(301, 3010000, 3200000, 10000, "crawler2");
+        webCrawler1.start();
+        webCrawler2.start();
     }
 
     private static void testEncryptedZipFile() throws IOException, ZipException {
