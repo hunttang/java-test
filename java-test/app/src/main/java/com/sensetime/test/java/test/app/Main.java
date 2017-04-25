@@ -71,7 +71,7 @@ public class Main {
             HashMap<HttpRequestSender.ArgsKey, Object> requestArgs = new HashMap<>();
             requestArgs.put(HttpRequestSender.ArgsKey.TIMEOUT, 1000);
 
-            try (FileWriter writerUnhandled = new FileWriter("D:\\Software\\baike\\unhandled.txt", true)) {
+            try (FileWriter writerUnhandled = new FileWriter(String.format("D:\\Software\\baike\\unhandled-%s.txt", getName()), true)) {
                 int fileCount = fileNumberStart;
                 FileWriter writer = null;
 
@@ -125,11 +125,87 @@ public class Main {
         }
     }
 
+    private static class WebCrawlerByFile extends Thread {
+        public WebCrawlerByFile(String name) {
+            super(name);
+        }
+
+        @Override
+        public void run() {
+            Pattern reg = Pattern.compile("[\r\n]");
+            Pattern errorReg = Pattern.compile(".*<h1 class=\"baikeLogo\">[\\p{Blank}]*百度百科错误页[\\p{Blank}]*</h1>.*");
+
+            HttpRequestSender sender = new HttpRequestSender();
+            HashMap<HttpRequestSender.ArgsKey, Object> requestArgs = new HashMap<>();
+            requestArgs.put(HttpRequestSender.ArgsKey.TIMEOUT, 1000);
+            requestArgs.put(HttpRequestSender.ArgsKey.TYPE, HttpRequestSender.Type.GET);
+            requestArgs.put(HttpRequestSender.ArgsKey.HOST, "baike.baidu.com");
+
+            try (FileWriter writer = new FileWriter(String.format("D:\\Software\\baike\\baike-%s.txt", getName()), true);
+                 FileWriter writerUnhandled = new FileWriter(String.format("D:\\Software\\baike\\unhandled5-%s.txt", getName()), true);
+                 BufferedReader reader = new BufferedReader(new FileReader(String.format("D:\\Software\\baike\\unhandled4-%s.txt", getName())))) {
+                int count = 0;
+                String line = reader.readLine();
+                while (line != null) {
+                    if (++count % 1000 == 0) {
+                        System.out.println(String.format("%s: %s\tProcessed %dk words.", getName(), DateTime.now().toString(), count / 1000));
+                    }
+
+                    line = line.trim();
+                    if (line.isEmpty() || line.length() > 8) {
+                        line = reader.readLine();
+                        continue;
+                    }
+
+                    requestArgs.put(HttpRequestSender.ArgsKey.PATH, String.format("/view/%s", line));
+
+                    try (CloseableHttpResponse response = sender.send(requestArgs)) {
+                        if (response == null || response.getStatusLine().getStatusCode() != 200) {
+                            writerUnhandled.write(String.format("%s\n", line));
+                            line = reader.readLine();
+                            continue;
+                        }
+
+                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                        response.getEntity().writeTo(baos);
+                        String html = reg.matcher(baos.toString()).replaceAll("");
+
+                        if (errorReg.matcher(html).matches()) {
+                            line = reader.readLine();
+                            continue;
+                        }
+                        writer.write(String.format("%s\n", html));
+                        line = reader.readLine();
+                    }
+                    catch (Exception e) {
+                        writerUnhandled.write(String.format("%s\n", line));
+                        System.out.println(String.format("%s: %s", getName(), e.getMessage()));
+                        line = reader.readLine();
+                    }
+                }
+            }
+            catch (IOException e) {
+                System.out.println(String.format("%s: %s", getName(), e.getMessage()));
+            }
+
+            System.out.println(String.format("%s: finished!", getName()));
+        }
+    }
+
     public static void main(String[] args) throws Exception {
-        WebCrawler webCrawler1 = new WebCrawler(271, 2710000, 3000000, 10000, "crawler1");
-        WebCrawler webCrawler2 = new WebCrawler(301, 3010000, 3200000, 10000, "crawler2");
+        WebCrawlerByFile webCrawler1 = new WebCrawlerByFile("crawler1");
+        WebCrawlerByFile webCrawler2 = new WebCrawlerByFile("crawler2");
+        WebCrawlerByFile webCrawler3 = new WebCrawlerByFile("crawler3");
+        WebCrawlerByFile webCrawler4 = new WebCrawlerByFile("crawler4");
+        WebCrawlerByFile webCrawler5 = new WebCrawlerByFile("crawler5");
+        WebCrawlerByFile webCrawler6 = new WebCrawlerByFile("crawler6");
+
         webCrawler1.start();
         webCrawler2.start();
+        webCrawler3.start();
+        webCrawler4.start();
+        webCrawler5.start();
+        webCrawler6.start();
     }
 
     private static void testEncryptedZipFile() throws IOException, ZipException {
