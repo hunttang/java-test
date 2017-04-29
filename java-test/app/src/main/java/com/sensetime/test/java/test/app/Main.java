@@ -65,32 +65,24 @@ public class Main {
         @Override
         public void run() {
             Pattern reg = Pattern.compile("[\r\n]");
-            Pattern errorReg = Pattern.compile(".*<h1 class=\"baikeLogo\">[\\p{Blank}]*百度百科错误页[\\p{Blank}]*</h1>.*");
+            Pattern errorReg = Pattern.compile("<h1 class=\"baikeLogo\">[\\p{Blank}]*百度百科错误页[\\p{Blank}]*</h1>");
 
             HttpRequestSender sender = new HttpRequestSender();
             HashMap<HttpRequestSender.ArgsKey, Object> requestArgs = new HashMap<>();
             requestArgs.put(HttpRequestSender.ArgsKey.TIMEOUT, 1000);
+            requestArgs.put(HttpRequestSender.ArgsKey.TYPE, HttpRequestSender.Type.GET);
+            requestArgs.put(HttpRequestSender.ArgsKey.HOST, "baike.baidu.com");
 
             try (FileWriter writerUnhandled = new FileWriter(String.format("D:\\Software\\baike\\unhandled-%s.txt", getName()), true)) {
                 int fileCount = fileNumberStart;
-                FileWriter writer = null;
-
+                int succeedCount = 0;
+                FileWriter writer = new FileWriter(String.format("D:\\Software\\baike\\baike%d.txt", fileCount++));
                 for (int i = webPageNumberStart; i < webPageNumberEnd; ++i) {
-                    if (i % 1000 == 0) {
-                        System.out.println(String.format("%s: %s\tProcessed %dk words.", getName(), DateTime.now().toString(), i / 1000));
-                        if (i % webPageCountPerFile == 0) {
-                            if (writer != null) {
-                                writer.close();
-                            }
-                            writerUnhandled.flush();
-                            writer = new FileWriter(String.format("D:\\Software\\baike\\baike%d.txt", fileCount++));
-                        }
+                    if (i % 10000 == 0) {
+                        System.out.println(String.format("%s: %s\tProcessed %d0k words.", getName(), DateTime.now().toString(), i / 1000));
                     }
 
-                    requestArgs.put(HttpRequestSender.ArgsKey.TYPE, HttpRequestSender.Type.GET);
-                    requestArgs.put(HttpRequestSender.ArgsKey.HOST, "baike.baidu.com");
                     requestArgs.put(HttpRequestSender.ArgsKey.PATH, String.format("/view/%d", i));
-
                     try (CloseableHttpResponse response = sender.send(requestArgs)) {
                         if (response == null || response.getStatusLine().getStatusCode() != 200) {
                             writerUnhandled.write(String.format("%d\n", i));
@@ -101,21 +93,29 @@ public class Main {
                         response.getEntity().writeTo(baos);
                         String line = reg.matcher(baos.toString()).replaceAll("");
 
-                        if (errorReg.matcher(line).matches()) {
+                        if (errorReg.matcher(line).find()) {
                             writerUnhandled.write(String.format("%d\n", i));
                             continue;
                         }
+
                         writer.write(String.format("%s\n", line));
+                        if (++succeedCount % webPageCountPerFile == 0) {
+                            writerUnhandled.flush();
+                            try {
+                                writer.close();
+                                writer = new FileWriter(String.format("D:\\Software\\baike\\baike%d.txt", fileCount++));
+                            }
+                            catch (Exception e) {
+                                System.out.println(String.format("%s: Fatal error! %s", getName(), e.getMessage()));
+                            }
+                        }
                     }
                     catch (Exception e) {
                         writerUnhandled.write(String.format("%d\n", i));
-                        System.out.println(String.format("%s: %s", getName(), e.getMessage()));
                     }
                 }
 
-                if (writer != null) {
-                    writer.close();
-                }
+                writer.close();
             }
             catch (IOException e) {
                 System.out.println(String.format("%s: %s", getName(), e.getMessage()));
@@ -193,19 +193,11 @@ public class Main {
     }
 
     public static void main(String[] args) throws Exception {
-        WebCrawlerByFile webCrawler1 = new WebCrawlerByFile("crawler1");
-        WebCrawlerByFile webCrawler2 = new WebCrawlerByFile("crawler2");
-        WebCrawlerByFile webCrawler3 = new WebCrawlerByFile("crawler3");
-        WebCrawlerByFile webCrawler4 = new WebCrawlerByFile("crawler4");
-        WebCrawlerByFile webCrawler5 = new WebCrawlerByFile("crawler5");
-        WebCrawlerByFile webCrawler6 = new WebCrawlerByFile("crawler6");
-
-        webCrawler1.start();
-        webCrawler2.start();
-        webCrawler3.start();
-        webCrawler4.start();
-        webCrawler5.start();
-        webCrawler6.start();
+        WebCrawler webCrawler;
+        for (int i = 0; i < 10; ++i) {
+            webCrawler = new WebCrawler(i * 200, i * 2000000, (i + 1) * 2000000, 10000, String.format("crawler%d", i));
+            webCrawler.start();
+        }
     }
 
     private static void testEncryptedZipFile() throws IOException, ZipException {
