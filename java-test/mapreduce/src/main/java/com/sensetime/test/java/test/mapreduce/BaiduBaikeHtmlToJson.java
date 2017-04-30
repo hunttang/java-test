@@ -87,6 +87,7 @@ public class BaiduBaikeHtmlToJson {
         private enum Counter {ENTITY, BLANK, UNHANDLED, NAVIGATOR}
 
         private static final Pattern BLANK_REG = Pattern.compile("<h1 class=\"baikeLogo\">[\\p{Blank}]*百度百科错误页[\\p{Blank}]*</h1>");
+        private static final Pattern COLLAPSE_REG = Pattern.compile("^(展开|收起)$");
         // \u00a0 is &nbsp; in html, \u3000 is ideographic space, while \ufeff is zero width no-break space (usually known as BOM)
         private static final Pattern INFO_KEY_REG = Pattern.compile("[\u00a0\u3000\ufeff\\p{Blank}:：]");
         private static final Pattern INFO_VALUE_REG = Pattern.compile("[\u00a0\u3000\\p{Blank}]+");
@@ -104,14 +105,10 @@ public class BaiduBaikeHtmlToJson {
                 return;
             }
 
-            // Remove all annotations
             Document doc = Jsoup.parse(html);
-            for (Element sup : doc.select("sup,.sup-anchor")) {
-                sup.text("");
-            }
 
             // Whether it's a polysemant navigation page
-            Elements polysemantElements = doc.select(".list-dot>[href]");
+            Elements polysemantElements = doc.select(".list-dot [href]");
             if (polysemantElements.size() > 0) {
                 for (Element polysemantEle : polysemantElements) {
                     context.write(new Text("needCrawl"), new Text(polysemantEle.attr("href")));
@@ -120,20 +117,19 @@ public class BaiduBaikeHtmlToJson {
                 return;
             }
 
-            // Try parse by one schema
+            // Try parse
             Set<String> infoKeySet = new HashSet<>();
-            JsonObject jsonObj = parseAsAllInMainContentSchema(doc, infoKeySet);
-
-            // Try parse by another schema
-            if (jsonObj == null) {
-                infoKeySet.clear();
-                jsonObj = parseAsSeparateInfoSchema(doc, infoKeySet);
-            }
+            JsonObject jsonObj = parse(doc, infoKeySet);
 
             // Cannot parse this doc
             if (jsonObj == null) {
                 context.write(new Text("unhandled"), value);
                 context.getCounter(Counter.UNHANDLED).increment(1);
+                return;
+            }
+
+            if (!jsonObj.has("summary") && !jsonObj.has("info") && !jsonObj.has("content")) {
+                context.getCounter(Counter.BLANK).increment(1);
                 return;
             }
 
@@ -144,35 +140,39 @@ public class BaiduBaikeHtmlToJson {
             context.getCounter(Counter.ENTITY).increment(1);
         }
 
-        private JsonObject parseAsAllInMainContentSchema(Document doc, Set<String> keySet) {
+        private static JsonObject parse(Document doc, Set<String> keySet) {
             JsonObject jsonObj = new JsonObject();
 
-            Elements mainContents = doc.select(".main-content");
-            if (mainContents.size() != 1) {
-                return null;
+            // Remove all useless texts
+            for (Element useless : doc.select("sup,.sup-anchor,.title-prefix,.edit-icon,.lemma-album")) {
+                useless.text("");
             }
-            Element mainContent = mainContents.get(0);
+            for (Element useless : doc.getElementsMatchingOwnText(COLLAPSE_REG)) {
+                useless.text("");
+            }
 
             // Extract title
-            Elements titleElements = mainContent.select("h1");
+            Elements titleElements = doc.select("[class~=main-content|feature_poster|feature-poster] h1");
             if (titleElements.size() != 1) {
                 return null;
             }
-            String title = titleElements.get(0).text();
+            String title = titleElements.get(0).text().trim();
             jsonObj.addProperty("title", title);
 
             // Extract summary
-            Elements summaryElements = mainContent.select(".lemma-summary");
+            Elements summaryElements = doc.select(".lemma-summary");
             if (summaryElements.size() == 1) {
                 String summary = summaryElements.get(0).text().trim();
-                jsonObj.addProperty("summary", summary);
+                if (!summary.isEmpty()) {
+                    jsonObj.addProperty("summary", summary);
+                }
             }
             else if (summaryElements.size() > 1) {
                 return null;
             }
 
             // Extract tag list
-            Elements tagElements = mainContent.select(".taglist");
+            Elements tagElements = doc.select(".taglist");
             if (tagElements.size() > 0) {
                 JsonArray jsonTag = new JsonArray();
                 for (Element tag : tagElements) {
@@ -182,14 +182,24 @@ public class BaiduBaikeHtmlToJson {
             }
 
             // Extract info box
-            Elements infoElements = mainContent.select(".basic-info");
-            if (infoElements.size() == 1) {
-                JsonObject jsonInfo = new JsonObject();
+            Elements infoElements = doc.select(".basic-info");
+            if (infoElements.size() < 1) {
+                infoElements = doc.select(".sWord-main");
+                if (infoElements.size() < 1) {
+                    infoElements = doc.select(".dl-baseinfo");
+                    if (infoElements.size() < 1) {
+                        infoElements = doc.select(".infoTable");
+                    }
+                }
+            }
+
+            JsonObject jsonInfo = new JsonObject();
+            if (infoElements.size() > 0) {
                 boolean hasError = false;
                 String key = null;
-                for (Element element : infoElements.get(0).select(".name,.value")) {
+                for (Element element : infoElements.select("dt,dd")) {
                     if (key == null) {
-                        if (element.hasClass("name")) {
+                        if (element.tagName().equals("dt")) {
                             key = element.text();
                         }
                         else {
@@ -198,7 +208,7 @@ public class BaiduBaikeHtmlToJson {
                         }
                     }
                     else {
-                        if (element.hasClass("value")) {
+                        if (element.tagName().equals("dd")) {
                             key = INFO_KEY_REG.matcher(key).replaceAll("");
                             if (key.isEmpty()) {
                                 key = null;
@@ -217,221 +227,81 @@ public class BaiduBaikeHtmlToJson {
                 if (hasError) {
                     return null;
                 }
+            }
 
-                Elements synonymElements = mainContent.select(".view-tip-panel");
-                if (synonymElements.size() == 1) {
-                    Element synonymEle = synonymElements.get(0);
-                    Elements keyElements = synonymEle.select(".viewTip-icon");
-                    Elements valueElements = synonymEle.select(".viewTip-fromTitle");
-                    if (keyElements.size() == 1 && valueElements.size() == 1) {
-                        String synonymKey = INFO_KEY_REG.matcher(keyElements.get(0).text()).replaceAll("");
-                        String synonymValue = INFO_VALUE_REG.matcher(valueElements.get(0).text()).replaceAll(" ");
-                        if (synonymKey.equals("同义词")) {
-                            keySet.add(synonymKey);
-                            jsonInfo.addProperty(synonymKey, synonymValue);
-                        }
-                        else {
-                            return null;
-                        }
+            Elements synonymElements = doc.select(".view-tip-panel");
+            if (synonymElements.size() == 1) {
+                Element synonymEle = synonymElements.get(0);
+                Elements keyElements = synonymEle.select(".viewTip-icon");
+                Elements valueElements = synonymEle.select(".viewTip-fromTitle");
+                if (keyElements.size() == 1 && valueElements.size() == 1) {
+                    String synonymKey = INFO_KEY_REG.matcher(keyElements.get(0).text()).replaceAll("");
+                    String synonymValue = INFO_VALUE_REG.matcher(valueElements.get(0).text()).replaceAll(" ");
+                    if (synonymKey.equals("同义词")) {
+                        keySet.add(synonymKey);
+                        jsonInfo.addProperty(synonymKey, synonymValue);
                     }
                     else {
                         return null;
                     }
                 }
-                else if (synonymElements.size() > 1) {
+                else {
                     return null;
                 }
-
-                jsonObj.add("info", jsonInfo);
             }
-            else if (infoElements.size() > 1) {
+            else if (synonymElements.size() > 1) {
                 return null;
+            }
+
+            if (jsonInfo.entrySet().size() > 0) {
+                jsonObj.add("info", jsonInfo);
             }
 
             // Extract main content
-            Elements contentElements = mainContent.select(".main-content>[class~=para-title|para]");
+            String headlineIndicator = "level-2";
+            String contentIndicator = "para";
+            Elements contentElements = doc.select(".main-content>[class~=para-title|para]");
             if (contentElements.size() < 1) {
-                return null;
-            }
-            for (Element useless : contentElements.select(".title-prefix,.edit-icon")) {
-                useless.text("");
+                contentElements = doc.select(".main-content>.curTab>[class~=para-title|para]");
+                if (contentElements.size() < 1) {
+                    headlineIndicator = "headline-1";
+                    contentElements = doc.select(".main-content>.curTab [class~=headline-1|para]");
+                }
             }
 
             StringBuilder content = new StringBuilder();
-            boolean titleBegan = false;
-            boolean textBegan = false;
-            for (Element contentEle : contentElements) {
-                // Skip all para-title with level other than level-2
-                if (contentEle.hasClass("para-title") && contentEle.hasClass("level-2")) {
-                    if (titleBegan || textBegan) {
-                        content.append('\u2063');
-                    }
-                    content.append(contentEle.text());
-                    titleBegan = true;
-                    textBegan = false;
-                }
-                else if (contentEle.hasClass("para")) {
-                    if (titleBegan) {
-                        content.append('\u2063');
-                    }
-                    content.append(contentEle.text());
-                    titleBegan = false;
-                    textBegan = true;
-                }
-            }
-            if (content.toString().trim().isEmpty()) {
-                return null;
-            }
-            jsonObj.addProperty("content", content.toString().trim());
-
-            return jsonObj;
-        }
-
-        private JsonObject parseAsSeparateInfoSchema(Document doc, Set<String> keySet) {
-            JsonObject jsonObj = new JsonObject();
-
-            Elements headerContents = doc.select(".feature_poster");
-            if (headerContents.size() != 1) {
-                return null;
-            }
-            Element headerContent = headerContents.get(0);
-
-            // Extract title
-            Elements titleElements = headerContent.select("h1");
-            if (titleElements.size() != 1) {
-                return null;
-            }
-            String title = titleElements.get(0).text();
-            jsonObj.addProperty("title", title);
-
-            // Extract summary
-            Elements summaryElements = headerContent.select(".lemma-summary");
-            if (summaryElements.size() == 1) {
-                String summary = summaryElements.get(0).text().trim();
-                jsonObj.addProperty("summary", summary);
-            }
-            else if (summaryElements.size() > 1) {
-                return null;
-            }
-
-            Elements mainContents = doc.select(".main-content");
-            if (mainContents.size() != 1) {
-                return null;
-            }
-            Element mainContent = mainContents.get(0);
-
-            // Extract tag list
-            Elements tagElements = mainContent.select(".taglist");
-            if (tagElements.size() > 0) {
-                JsonArray jsonTag = new JsonArray();
-                for (Element tag : tagElements) {
-                    jsonTag.add(new JsonPrimitive(tag.text()));
-                }
-                jsonObj.add("tag", jsonTag);
-            }
-
-            // Extract info box
-            Elements infoElements = mainContent.select(".basic-info");
-            if (infoElements.size() == 1) {
-                JsonObject jsonInfo = new JsonObject();
-                boolean hasError = false;
-                String key = null;
-                for (Element element : infoElements.get(0).select(".name,.value")) {
-                    if (key == null) {
-                        if (element.hasClass("name")) {
-                            key = element.text();
-                        }
-                        else {
-                            hasError = true;
-                            break;
-                        }
-                    }
-                    else {
-                        if (element.hasClass("value")) {
-                            key = INFO_KEY_REG.matcher(key).replaceAll("");
-                            if (key.isEmpty()) {
-                                key = null;
-                                continue;
-                            }
-                            keySet.add(key);
-                            jsonInfo.addProperty(key, INFO_VALUE_REG.matcher(element.text()).replaceAll(" "));
-                            key = null;
-                        }
-                        else {
-                            hasError = true;
-                            break;
-                        }
-                    }
-                }
-                if (hasError) {
-                    return null;
-                }
-
-                Elements synonymElements = mainContent.select(".view-tip-panel");
-                if (synonymElements.size() == 1) {
-                    Element synonymEle = synonymElements.get(0);
-                    Elements keyElements = synonymEle.select(".viewTip-icon");
-                    Elements valueElements = synonymEle.select(".viewTip-fromTitle");
-                    if (keyElements.size() == 1 && valueElements.size() == 1) {
-                        String synonymKey = INFO_KEY_REG.matcher(keyElements.get(0).text()).replaceAll("");
-                        String synonymValue = INFO_VALUE_REG.matcher(valueElements.get(0).text()).replaceAll(" ");
-                        if (synonymKey.equals("同义词")) {
-                            keySet.add(synonymKey);
-                            jsonInfo.addProperty(synonymKey, synonymValue);
-                        }
-                        else {
-                            return null;
-                        }
-                    }
-                    else {
-                        return null;
-                    }
-                }
-                else if (synonymElements.size() > 1) {
-                    return null;
-                }
-
-                jsonObj.add("info", jsonInfo);
-            }
-            else if (infoElements.size() > 1) {
-                return null;
-            }
-
-            // Extract main content
-            Elements contentElements = mainContent.select(".main-content>[class~=para-title|para]");
             if (contentElements.size() < 1) {
-                return null;
-            }
-            for (Element useless : contentElements.select(".title-prefix,.edit-icon")) {
-                useless.text("");
-            }
-
-            StringBuilder content = new StringBuilder();
-            boolean titleBegan = false;
-            boolean textBegan = false;
-            for (Element contentEle : contentElements) {
-                // Skip all para-title with level other than level-2
-                if (contentEle.hasClass("para-title") && contentEle.hasClass("level-2")) {
-                    if (titleBegan || textBegan) {
-                        content.append('\u2063');
-                    }
-                    content.append(contentEle.text());
-                    titleBegan = true;
-                    textBegan = false;
-                }
-                else if (contentEle.hasClass("para")) {
-                    if (titleBegan) {
-                        content.append('\u2063');
-                    }
-                    content.append(contentEle.text());
-                    titleBegan = false;
-                    textBegan = true;
+                contentElements = doc.select(".main-content");
+                if (contentElements.size() == 1) {
+                    content.append(contentElements.get(0).ownText());
                 }
             }
-            if (content.toString().trim().isEmpty()) {
-                return null;
+            else {
+                boolean titleBegan = false;
+                boolean textBegan = false;
+                for (Element contentEle : contentElements) {
+                    // Skip all para-title with level other than level-2
+                    if (contentEle.hasClass(headlineIndicator)) {
+                        if (titleBegan || textBegan) {
+                            content.append('\u2063');
+                        }
+                        content.append(contentEle.text());
+                        titleBegan = true;
+                        textBegan = false;
+                    }
+                    else if (contentEle.hasClass(contentIndicator)) {
+                        if (titleBegan) {
+                            content.append('\u2063');
+                        }
+                        content.append(contentEle.text());
+                        titleBegan = false;
+                        textBegan = true;
+                    }
+                }
             }
-            jsonObj.addProperty("content", content.toString().trim());
+            if (!content.toString().trim().isEmpty()) {
+                jsonObj.addProperty("content", content.toString().trim());
+            }
 
             return jsonObj;
         }
