@@ -25,7 +25,7 @@ import java.util.Map;
  * @author Hunt
  */
 public class HttpRequestSender {
-    public enum ArgsKey {TYPE, SCHEME, HOST, PORT, PATH, PARAM, TIMEOUT, HEADER, ENTITY_TYPE, ENTITY, CONTENT_TYPE}
+    public enum ArgsKey {TYPE, SCHEME, HOST, PORT, PATH, PARAM, HEADER, TIMEOUT, ENTITY_TYPE, ENTITY, CONTENT_TYPE}
 
     public enum Type {GET, POST, DELETE}
 
@@ -86,6 +86,10 @@ public class HttpRequestSender {
                     return null;
             }
 
+            if (requestArgs.containsKey(ArgsKey.HEADER)) {
+                httpRequest.setHeaders(((List<Header>)requestArgs.get(ArgsKey.HEADER)).toArray(new Header[0]));
+            }
+
             Integer timeout = 0;
             if (requestArgs.containsKey(ArgsKey.TIMEOUT)) {
                 timeout = (Integer)requestArgs.get(ArgsKey.TIMEOUT);
@@ -96,7 +100,6 @@ public class HttpRequestSender {
                     .setSocketTimeout(timeout)
                     .build();
             httpRequest.setConfig(config);
-            httpRequest.setHeaders(((List<Header>)requestArgs.get(ArgsKey.HEADER)).toArray(new Header[0]));
 
             CloseableHttpResponse response = httpClient.execute(httpRequest, context);
 
