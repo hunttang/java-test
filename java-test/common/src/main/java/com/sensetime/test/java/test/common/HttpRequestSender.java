@@ -1,5 +1,6 @@
 package com.sensetime.test.java.test.common;
 
+import org.apache.http.Header;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.entity.EntityBuilder;
@@ -9,13 +10,14 @@ import org.apache.http.entity.ContentType;
 import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.protocol.HttpContext;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URISyntaxException;
-import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * This is a common Http Request Sender which disregards any business logic
@@ -23,7 +25,7 @@ import java.util.List;
  * @author Hunt
  */
 public class HttpRequestSender {
-    public enum ArgsKey {TYPE, SCHEME, HOST, PORT, PATH, PARAM, TIMEOUT, ENTITY_TYPE, ENTITY, CONTENT_TYPE}
+    public enum ArgsKey {TYPE, SCHEME, HOST, PORT, PATH, PARAM, TIMEOUT, HEADER, ENTITY_TYPE, ENTITY, CONTENT_TYPE}
 
     public enum Type {GET, POST, DELETE}
 
@@ -36,14 +38,18 @@ public class HttpRequestSender {
         STRING, STREAM, BINARY, FILE, MULTIPART
     }
 
-    private final CloseableHttpClient httpClient;
+    private CloseableHttpClient httpClient;
 
     public HttpRequestSender() {
         httpClient = HttpClientBuilder.create().build();
         Runtime.getRuntime().addShutdownHook(new ShutdownHook());
     }
 
-    public CloseableHttpResponse send(final HashMap<ArgsKey, Object> requestArgs) {
+    public CloseableHttpResponse send(final Map<ArgsKey, Object> requestArgs) {
+        return send(requestArgs, null);
+    }
+
+    public CloseableHttpResponse send(final Map<ArgsKey, Object> requestArgs, HttpContext context) {
         try {
             URIBuilder uri = new URIBuilder();
             if (requestArgs.containsKey(ArgsKey.SCHEME)) {
@@ -61,7 +67,24 @@ public class HttpRequestSender {
                 uri.setParameters((List<NameValuePair>)requestArgs.get(ArgsKey.PARAM));
             }
 
-            Type type = (Type)requestArgs.get(ArgsKey.TYPE);
+            HttpRequestBase httpRequest;
+            switch ((Type)requestArgs.get(ArgsKey.TYPE)) {
+                case GET:
+                    httpRequest = new HttpGet(uri.build());
+                    break;
+                case DELETE:
+                    httpRequest = new HttpDelete(uri.build());
+                    break;
+                case POST:
+                    httpRequest = new HttpPost(uri.build());
+                    if (!setEntityByType((HttpPost)httpRequest, (EntityType)requestArgs.get(ArgsKey.ENTITY_TYPE),
+                            requestArgs.get(ArgsKey.ENTITY), (ContentType)requestArgs.get(ArgsKey.CONTENT_TYPE))) {
+                        return null;
+                    }
+                    break;
+                default:
+                    return null;
+            }
 
             Integer timeout = 0;
             if (requestArgs.containsKey(ArgsKey.TIMEOUT)) {
@@ -72,36 +95,15 @@ public class HttpRequestSender {
                     .setConnectionRequestTimeout(timeout)
                     .setSocketTimeout(timeout)
                     .build();
+            httpRequest.setConfig(config);
+            httpRequest.setHeaders(((List<Header>)requestArgs.get(ArgsKey.HEADER)).toArray(new Header[0]));
 
-            HttpUriRequest httpRequest;
-            if (type == Type.GET) {
-                HttpGet httpGet = new HttpGet(uri.build());
-                httpGet.setConfig(config);
-                httpRequest = httpGet;
-            }
-            else if (type == Type.DELETE) {
-                HttpDelete httpDelete = new HttpDelete(uri.build());
-                httpDelete.setConfig(config);
-                httpRequest = httpDelete;
-            }
-            else if (type == Type.POST) {
-                HttpPost httpPost = new HttpPost(uri.build());
-                httpPost.setConfig(config);
-                httpRequest = httpPost;
-                if (!setEntityByType((HttpPost)httpRequest, (EntityType)requestArgs.get(ArgsKey.ENTITY_TYPE),
-                        requestArgs.get(ArgsKey.ENTITY), (ContentType)requestArgs.get(ArgsKey.CONTENT_TYPE))) {
-                    return null;
-                }
-            }
-            else {
-                return null;
-            }
-
-            CloseableHttpResponse response = httpClient.execute(httpRequest);
+            CloseableHttpResponse response = httpClient.execute(httpRequest, context);
 
             return response;
         }
         catch (URISyntaxException | IOException e) {
+            // Do nothing
         }
 
         return null;
@@ -160,7 +162,10 @@ public class HttpRequestSender {
 
     @Override
     protected void finalize() throws Throwable {
-        httpClient.close();
+        if (httpClient != null) {
+            httpClient.close();
+            httpClient = null;
+        }
         super.finalize();
     }
 
@@ -195,9 +200,13 @@ public class HttpRequestSender {
         @Override
         public void run() {
             try {
-                httpClient.close();
+                if (httpClient != null) {
+                    httpClient.close();
+                    httpClient = null;
+                }
             }
             catch (IOException e) {
+                // Do nothing
             }
         }
     }
