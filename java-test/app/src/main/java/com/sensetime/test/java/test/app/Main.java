@@ -8,29 +8,38 @@ import net.lingala.zip4j.exception.ZipException;
 import net.lingala.zip4j.model.ZipParameters;
 import net.lingala.zip4j.util.Zip4jConstants;
 import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.NameValuePair;
+import org.apache.commons.io.Charsets;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
+import org.apache.http.Header;
 import org.apache.http.HttpEntity;
+import org.apache.http.NameValuePair;
 import org.apache.http.client.methods.*;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.message.BasicHeader;
+import org.apache.http.message.BasicNameValuePair;
 import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.ISODateTimeFormat;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
 import java.io.*;
+import java.net.URLDecoder;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -125,78 +134,183 @@ public class Main {
         }
     }
 
-    private static class WebCrawlerByFile extends Thread {
-        public WebCrawlerByFile(String name) {
+    private static class WebCrawlerBySeed extends Thread {
+        private static final Pattern LINEFEED_REG = Pattern.compile("[\r\n]");
+        private static final Pattern ERROR_REG = Pattern.compile(".*<div[^>]+>知道宝贝找不到问题了&gt;_&lt;!!</div>\\p{Blank}*<div[^>]+>该问题可能已经失效。</div>.*");
+        private static final Pattern ZHIDAO_URL_REG = Pattern.compile("zhidao.baidu.com/question/[0-9]+");
+        private static final Pattern ZHIDAO_URL_PATH_REG = Pattern.compile("/question/[0-9]+.*");
+        private static final Pattern NON_NUMBER_REG = Pattern.compile("[^0-9]");
+
+        private final CountDownLatch countDownLatch;
+        private final Map<HttpRequestSender.ArgsKey, Object> requestArgs = new HashMap<>();
+        private final HttpRequestSender sender = new HttpRequestSender();
+        private final Set<Long> seedSet = new HashSet<>();
+        private final Set<Long> idSet;
+
+        public WebCrawlerBySeed(String name, CountDownLatch countDownLatch, Set<Long> seedSet, Set<Long> idSet) {
             super(name);
+            this.countDownLatch = countDownLatch;
+            this.seedSet.addAll(seedSet);
+            this.idSet = idSet;
         }
 
         @Override
         public void run() {
-            Pattern reg = Pattern.compile("[\r\n]");
-            Pattern errorReg = Pattern.compile(".*<h1 class=\"baikeLogo\">[\\p{Blank}]*百度百科错误页[\\p{Blank}]*</h1>.*");
+            System.out.println(String.format("%s: %s\tStarted.", getName(), DateTime.now().toString()));
 
-            HttpRequestSender sender = new HttpRequestSender();
-            HashMap<HttpRequestSender.ArgsKey, Object> requestArgs = new HashMap<>();
             requestArgs.put(HttpRequestSender.ArgsKey.TIMEOUT, 1000);
             requestArgs.put(HttpRequestSender.ArgsKey.TYPE, HttpRequestSender.Type.GET);
-            requestArgs.put(HttpRequestSender.ArgsKey.HOST, "baike.baidu.com");
+            requestArgs.put(HttpRequestSender.ArgsKey.HOST, "zhidao.baidu.com");
 
-            try (FileWriter writer = new FileWriter(String.format("D:\\Software\\baike\\baike-%s.txt", getName()), true);
-                 FileWriter writerUnhandled = new FileWriter(String.format("D:\\Software\\baike\\unhandled5-%s.txt", getName()), true);
-                 BufferedReader reader = new BufferedReader(new FileReader(String.format("D:\\Software\\baike\\unhandled4-%s.txt", getName())))) {
+            try (FileWriter writer = new FileWriter(String.format("D:\\Software\\zhidao\\zhidao-%s.txt", getName()))) {
                 int count = 0;
-                String line = reader.readLine();
-                while (line != null) {
-                    if (++count % 1000 == 0) {
-                        System.out.println(String.format("%s: %s\tProcessed %dk words.", getName(), DateTime.now().toString(), count / 1000));
-                    }
-
-                    line = line.trim();
-                    if (line.isEmpty() || line.length() > 8) {
-                        line = reader.readLine();
-                        continue;
-                    }
-
-                    requestArgs.put(HttpRequestSender.ArgsKey.PATH, String.format("/view/%s", line));
-
-                    try (CloseableHttpResponse response = sender.send(requestArgs)) {
-                        if (response == null || response.getStatusLine().getStatusCode() != 200) {
-                            writerUnhandled.write(String.format("%s\n", line));
-                            line = reader.readLine();
-                            continue;
+                while (!seedSet.isEmpty()) {
+                    Set<Long> curSet = new HashSet<>(seedSet);
+                    seedSet.clear();
+                    for (Long seed : curSet) {
+                        if (++count % 1000 == 0) {
+                            System.out.println(String.format("%s: %s\tProcessed %dk seeds.", getName(), DateTime.now().toString(), count / 1000));
+                            if (count > 10000) {
+                                return;
+                            }
                         }
 
-                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                        response.getEntity().writeTo(baos);
-                        String html = reg.matcher(baos.toString()).replaceAll("");
+                        /*
+                        requestArgs.put(HttpRequestSender.ArgsKey.PATH, String.format("/api/qbpv", seed));
+                        List<NameValuePair> params = new ArrayList<>(1);
+                        params.add(new BasicNameValuePair("q", seed.toString()));
+                        requestArgs.put(HttpRequestSender.ArgsKey.PARAM, params);
+                        List<Header> headers = new ArrayList<>(1);
+                        headers.add(new BasicHeader("Referer", String.format("https://zhidao.baidu.com/question/%d", seed)));
+                        requestArgs.put(HttpRequestSender.ArgsKey.HEADER, headers);
+                        try (CloseableHttpResponse response = sender.send(requestArgs)) {
+                            if (response == null || response.getStatusLine().getStatusCode() != 200) {
+                                seedSet.add(seed);
+                                continue;
+                            }
 
-                        if (errorReg.matcher(html).matches()) {
-                            line = reader.readLine();
+                            String result = IOUtils.toString(response.getEntity().getContent(), "GB18030").trim();
+                            int pv = Integer.parseInt(result);
+                            if (pv < 100) {
+                                continue;
+                            }
+                        }
+                        catch (IOException e) {
+                            seedSet.add(seed);
                             continue;
                         }
-                        writer.write(String.format("%s\n", html));
-                        line = reader.readLine();
-                    }
-                    catch (Exception e) {
-                        writerUnhandled.write(String.format("%s\n", line));
-                        System.out.println(String.format("%s: %s", getName(), e.getMessage()));
-                        line = reader.readLine();
+                        finally {
+                            requestArgs.remove(HttpRequestSender.ArgsKey.PATH);
+                            requestArgs.remove(HttpRequestSender.ArgsKey.PARAM);
+                            requestArgs.remove(HttpRequestSender.ArgsKey.HEADER);
+                        }
+                        */
+
+                        requestArgs.put(HttpRequestSender.ArgsKey.PATH, String.format("/question/%d", seed));
+                        try (CloseableHttpResponse response = sender.send(requestArgs)) {
+                            if (response == null || response.getStatusLine().getStatusCode() != 200) {
+                                seedSet.add(seed);
+                                continue;
+                            }
+
+                            String html = LINEFEED_REG.matcher(IOUtils.toString(response.getEntity().getContent(), "GB18030")).replaceAll("").trim();
+                            if (ERROR_REG.matcher(html).matches()) {
+                                continue;
+                            }
+                            writer.write(String.format("%d\t%s\n", seed, html));
+
+                            Document doc = Jsoup.parse(html);
+                            Elements refElements = doc.select("[href]");
+                            for (Element refEle : refElements) {
+                                try {
+                                    String ref = URLDecoder.decode(refEle.attr("href"), "UTF-8").trim();
+                                    Matcher zhidaoUrlMatcher = ZHIDAO_URL_REG.matcher(ref);
+                                    if (zhidaoUrlMatcher.find()) {
+                                        ref = ref.substring(zhidaoUrlMatcher.start() + "zhidao.baidu.com".length());
+                                    }
+                                    if (ZHIDAO_URL_PATH_REG.matcher(ref).matches()) {
+                                        Matcher nonNumberMatcher = NON_NUMBER_REG.matcher(ref);
+                                        if (nonNumberMatcher.find("/question/".length())) {
+                                            ref = ref.substring("/question/".length(), nonNumberMatcher.start());
+                                        }
+                                        else {
+                                            ref = ref.substring("/question/".length());
+                                        }
+                                        Long id = new Long(ref);
+                                        if (!idSet.contains(id)) {
+                                            synchronized (idSet) {
+                                                if (!idSet.contains(id)) {
+                                                    idSet.add(id);
+                                                    seedSet.add(id);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                catch (UnsupportedEncodingException | IllegalArgumentException e) {
+                                    // URLDecoder exception, will do nothing, just skip
+                                }
+                            }
+                        }
+                        catch (IOException e) {
+                            seedSet.add(seed);
+                        }
                     }
                 }
             }
             catch (IOException e) {
                 System.out.println(String.format("%s: %s", getName(), e.getMessage()));
             }
-
-            System.out.println(String.format("%s: finished!", getName()));
+            finally {
+                System.out.println(String.format("%s: finished!", getName()));
+                countDownLatch.countDown();
+            }
         }
     }
 
     public static void main(String[] args) throws Exception {
-        WebCrawler webCrawler;
-        for (int i = 0; i < 10; ++i) {
-            webCrawler = new WebCrawler(i * 200, i * 2000000, (i + 1) * 2000000, 10000, String.format("crawler%d", i));
-            webCrawler.start();
+        Set<Long> idSet = new HashSet<>();
+
+        try (FileReader fileReader = new FileReader("D:\\Software\\zhidao\\seed - 副本.txt");
+             BufferedReader reader = new BufferedReader(fileReader)) {
+            String line = reader.readLine();
+            while (line != null) {
+                line = line.trim();
+                if (line.isEmpty()) {
+                    line = reader.readLine();
+                    continue;
+                }
+
+                Long id = new Long(line);
+                idSet.add(id);
+                line = reader.readLine();
+            }
+        }
+
+        int crawlerCount = 50;
+        CountDownLatch countDownLatch = new CountDownLatch(crawlerCount);
+        Long[] seedArray = idSet.toArray(new Long[0]);
+        int countPerCrawler = seedArray.length / crawlerCount + (seedArray.length % crawlerCount == 0 ? 0 : 1);
+        for (int i = 0; i < crawlerCount; ++i) {
+            Set<Long> seedSet = new HashSet<>();
+            for (int j = i * countPerCrawler; j < (i + 1) * countPerCrawler; ++j) {
+                if (j >= seedArray.length) {
+                    break;
+                }
+                seedSet.add(seedArray[j]);
+            }
+            WebCrawlerBySeed crawler = new WebCrawlerBySeed(String.format("crawler-%d", i), countDownLatch, seedSet, idSet);
+            crawler.start();
+        }
+
+        countDownLatch.await();
+
+        Long[] idArray = idSet.toArray(new Long[0]);
+        Arrays.sort(idArray);
+        try (FileWriter writer = new FileWriter("D:\\Software\\zhidao\\seed - 副本.txt")) {
+            for (Long id : idArray) {
+                writer.write(String.format("%d\n", id));
+            }
         }
     }
 
