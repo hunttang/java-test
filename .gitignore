@@ -1,13 +1,26 @@
-# Ignore Mac files
-.DS_Store
-
-# Ignore IntelliJ files
-*.iml
-.idea/
-
-# Ignore build output
-build/
-
-# Ignore some gradle files
-.gradle/
+dependency-reduced-pom.xml
+logback-test.xml
 gradlew.bat
+nohup.out
+
+*.classpath
+*.project
+*.settings
+*.crc
+*.iml
+*.pyc
+
+.DS_Store
+.gradle
+.idea
+
+build
+target
+gen-loc
+out
+tmp
+temp
+classes
+log
+logs
+audit

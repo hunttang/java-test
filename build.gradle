@@ -1,16 +1,180 @@
+buildscript {
+    repositories {
+        jcenter()
+    }
+
+    dependencies {
+        classpath "com.github.jengelman.gradle.plugins:shadow:2.0.1"
+    }
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '4.4'
+}
+
 allprojects {
     repositories {
         mavenCentral()
     }
 
+    defaultTasks 'clean', 'shadowJar'
+
     apply plugin: 'idea'
+    apply plugin: 'java'
+
+    sourceCompatibility = 1.8
+    targetCompatibility = 1.8
+
+    group 'com.sensetime.test'
+    version '1.0'
+
+    dependencies {
+        testCompile 'junit:junit:4.12'
+
+        compile 'org.apache.commons:commons-lang3:3.6'
+        compile 'commons-io:commons-io:2.5'
+        compile 'com.google.code.gson:gson:2.8.0'
+        compile 'joda-time:joda-time:2.9.9'
+        compile 'com.typesafe:config:1.3.1'
+        compile 'org.projectlombok:lombok:1.16.18'
+    }
 }
 
 subprojects {
-    group 'com.sensetime.test'
-    version '1.0'
+    if (project != project(':common')) {
+        dependencies {
+            compile project(':common')
+        }
+    }
 }
 
-task wrapper(type: Wrapper) {
-    gradleVersion = '3.5'
+project(':common') {
+    dependencies {
+        compile 'org.apache.httpcomponents:httpasyncclient:4.1.3'
+        compile 'org.apache.httpcomponents:httpclient:4.5.2'
+        compile 'org.apache.httpcomponents:httpmime:4.5.2'
+    }
+}
+
+project(':java-test') {
+    allprojects {
+        group 'com.sensetime.test.java.test'
+
+        dependencies {
+            compile 'ch.qos.logback:logback-classic:1.2.3'
+        }
+    }
+
+    subprojects {
+        apply plugin: 'application'
+        apply plugin: 'com.github.johnrengelman.shadow'
+
+        shadowJar {
+            zip64 true
+
+            if (project.file('logback.xml').exists()) {
+                exclude project(':common').file('logback.xml').path
+            }
+        }
+    }
+
+    project(':java-test:app') {
+        mainClassName = 'com.sensetime.test.java.test.app.Main'
+
+        dependencies {
+            compile 'org.apache.hadoop:hadoop-client:2.7.1'
+            compile 'org.apache.hbase:hbase-client:1.1.2'
+            compile 'net.lingala.zip4j:zip4j:1.3.2'
+            compile 'org.apache.poi:poi-ooxml:3.16'
+            compile 'org.jsoup:jsoup:1.10.2'
+        }
+    }
+
+    project(':java-test:drill') {
+        mainClassName = 'com.sensetime.test.java.test.drill.Main'
+
+        dependencies {
+            compile 'org.apache.drill.exec:drill-jdbc-all:1.4.0'
+            compile 'org.apache.hbase:hbase-common:1.1.2'
+        }
+    }
+
+    project(':java-test:hbase') {
+        mainClassName = 'com.sensetime.test.java.test.hbase.Main'
+
+        dependencies {
+            compile 'org.apache.hbase:hbase-common:1.1.5'
+            compile 'org.apache.hbase:hbase-client:1.1.5'
+        }
+    }
+
+    project(':java-test:jna') {
+        mainClassName = 'com.sensetime.test.java.test.jna.Main'
+
+        dependencies {
+            compile 'net.java.dev.jna:jna:4.4.0'
+        }
+    }
+
+    project(':java-test:mapreduce') {
+        mainClassName = 'com.sensetime.test.java.test.mapreduce.TestRunner'
+
+        dependencies {
+            compile 'org.apache.hadoop:hadoop-client:2.7.1'
+            compile 'org.apache.hadoop:hadoop-mapreduce-client-shuffle:2.7.1'
+        }
+    }
+
+    project(':java-test:spark') {
+        mainClassName = 'com.sensetime.test.java.test.spark.Main'
+
+        dependencies {
+            compile 'org.apache.hadoop:hadoop-client:2.7.1'
+            compile 'org.apache.spark:spark-core_2.10:1.5.1'
+            compile 'org.apache.spark:spark-streaming_2.10:1.5.1'
+            compile 'org.apache.spark:spark-streaming-kafka_2.10:1.5.1'
+            compile 'org.apache.spark:spark-sql_2.10:1.5.1'
+        }
+    }
+}
+
+project(':scala-test') {
+    allprojects {
+        apply plugin: 'scala'
+
+        group 'com.test.scalatest'
+
+        dependencies {
+            zinc 'com.typesafe.zinc:zinc:0.3.13'
+            compile 'org.scala-lang:scala-library:2.12.1'
+            compile 'org.scala-lang:scala-compiler:2.12.1'
+            compile 'org.scala-lang:scala-reflect:2.12.1'
+        }
+
+        configurations.all {
+            resolutionStrategy {
+                force 'com.google.guava:guava:14.0.1'
+            }
+        }
+    }
+
+    subprojects {
+        apply plugin: 'application'
+        apply plugin: 'com.github.johnrengelman.shadow'
+
+        shadowJar {
+            zip64 true
+        }
+    }
+
+    project(':scala-test:app') {
+        mainClassName = 'com.sensetime.test.scala.test.app.Main'
+
+        dependencies {
+            compile 'org.apache.hadoop:hadoop-client:2.7.1'
+            compile 'org.apache.hbase:hbase-client:1.1.2'
+            compile 'org.apache.spark:spark-core_2.11:2.2.0'
+            compile 'net.lingala.zip4j:zip4j:1.3.2'
+        }
+    }
 }

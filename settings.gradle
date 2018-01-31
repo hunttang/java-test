@@ -1,6 +1,6 @@
 rootProject.name = 'test'
+include 'common'
 include 'java-test'
-include 'java-test:common'
 include 'java-test:app'
 include 'java-test:jna'
 include 'java-test:drill'

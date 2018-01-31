@@ -1,9 +1,11 @@
 package com.sensetime.test.java.test.common;
 
 import org.apache.http.Header;
+import org.apache.http.HttpEntity;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.entity.EntityBuilder;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.*;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.entity.ContentType;
@@ -15,6 +17,7 @@ import org.apache.http.protocol.HttpContext;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
 import java.net.URISyntaxException;
 import java.util.List;
 import java.util.Map;
@@ -32,10 +35,12 @@ public class HttpRequestSender {
     /**
      * When ArgsKey.ENTITY_TYPE is set to EntityType.MULTIPART,
      * ArgsKey.ENTITY should be List<MultipartEntityTriplet>,
-     * and ArgsKey.CONTENT_TYPE will be disregarded.
+     * while ArgsKey.ENTITY_TYPE is set to EntityType.URL_ENCODED_FORM,
+     * ArgsKey.ENTITY should be List<NameValuePair>.
+     * And both of the above, the ArgsKey.CONTENT_TYPE will be disregarded.
      */
     public enum EntityType {
-        STRING, STREAM, BINARY, FILE, MULTIPART
+        STRING, STREAM, BINARY, FILE, MULTIPART, URL_ENCODED_FORM
     }
 
     private CloseableHttpClient httpClient;
@@ -123,43 +128,51 @@ public class HttpRequestSender {
             return false;
         }
 
-        if (entityType == EntityType.STRING) {
-            EntityBuilder entityBuilder = EntityBuilder.create().setContentType(contentType).setText((String)entity);
-            httpRequest.setEntity(entityBuilder.build());
-        }
-        else if (entityType == EntityType.STREAM) {
-            EntityBuilder entityBuilder = EntityBuilder.create().setContentType(contentType).setStream((InputStream)entity);
-            httpRequest.setEntity(entityBuilder.build());
-        }
-        else if (entityType == EntityType.BINARY) {
-            EntityBuilder entityBuilder = EntityBuilder.create().setContentType(contentType).setBinary((byte[])entity);
-            httpRequest.setEntity(entityBuilder.build());
-        }
-        else if (entityType == EntityType.MULTIPART) {
-            MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
-            for (MultipartEntityTriplet triplet : (List<MultipartEntityTriplet>)entity) {
-                if (triplet.getType() == EntityType.STRING) {
-                    entityBuilder.addTextBody(triplet.getName(), (String)triplet.getValue());
+        HttpEntity httpEntity;
+        switch (entityType) {
+            case STRING:
+                httpEntity = EntityBuilder.create().setContentType(contentType).setText((String)entity).build();
+                break;
+            case STREAM:
+                httpEntity = EntityBuilder.create().setContentType(contentType).setStream((InputStream)entity).build();
+                break;
+            case BINARY:
+                httpEntity = EntityBuilder.create().setContentType(contentType).setBinary((byte[])entity).build();
+                break;
+            case MULTIPART:
+                MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
+                for (MultipartEntityTriplet triplet : (List<MultipartEntityTriplet>)entity) {
+                    if (triplet.getType() == EntityType.STRING) {
+                        entityBuilder.addTextBody(triplet.getName(), (String)triplet.getValue());
+                    }
+                    else if (triplet.getType() == EntityType.STREAM) {
+                        entityBuilder.addBinaryBody(triplet.getName(), (InputStream)triplet.getValue());
+                    }
+                    else if (triplet.getType() == EntityType.BINARY) {
+                        entityBuilder.addBinaryBody(triplet.getName(), (byte[])triplet.getValue());
+                    }
+                    else if (triplet.getType() == EntityType.FILE) {
+                        entityBuilder.addBinaryBody(triplet.getName(), (File)triplet.getValue());
+                    }
+                    else {
+                        return false;
+                    }
                 }
-                else if (triplet.getType() == EntityType.STREAM) {
-                    entityBuilder.addBinaryBody(triplet.getName(), (InputStream)triplet.getValue());
+                httpEntity = entityBuilder.build();
+                break;
+            case URL_ENCODED_FORM:
+                try {
+                    httpEntity = new UrlEncodedFormEntity((List<NameValuePair>)entity);
                 }
-                else if (triplet.getType() == EntityType.BINARY) {
-                    entityBuilder.addBinaryBody(triplet.getName(), (byte[])triplet.getValue());
-                }
-                else if (triplet.getType() == EntityType.FILE) {
-                    entityBuilder.addBinaryBody(triplet.getName(), (File)triplet.getValue());
-                }
-                else {
+                catch (UnsupportedEncodingException e) {
                     return false;
                 }
-            }
-            httpRequest.setEntity(entityBuilder.build());
-        }
-        else {
-            return false;
+                break;
+            default:
+                return false;
         }
 
+        httpRequest.setEntity(httpEntity);
         return true;
     }
 

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appender name="stdout" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%date{ISO8601} %highlight(%-5level) [%thread] %file:%line - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="logFile" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>%d{yyyyMMddHHmmSS}.log.gz</fileNamePattern>
+            <maxHistory>30</maxHistory>
+        </rollingPolicy>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>info</level>
+        </filter>
+        <encoder>
+            <pattern>%date{ISO8601} %-5level [%thread] %file:%line - %msg%n</pattern>
+            <immediateFlush>true</immediateFlush>
+        </encoder>
+    </appender>
+
+    <root level="info">
+        <appender-ref ref="stdout"/>
+        <appender-ref ref="logFile"/>
+    </root>
+</configuration>
