@@ -32,7 +32,9 @@ public class TestWebSocketConnectionCallback implements WebSocketConnectionCallb
             }
 
             result = String.format("This is another test WebSocket handler response on %s", DateTime.now().toString());
-            WebSockets.sendText(result, channel, null);
+            for (WebSocketChannel peerChannel : channel.getPeerConnections()) {
+                WebSockets.sendText(result, peerChannel, null);
+            }
         }
     }
 }
