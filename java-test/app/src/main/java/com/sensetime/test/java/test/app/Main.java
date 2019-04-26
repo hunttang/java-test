@@ -6,9 +6,11 @@ import com.google.common.primitives.Longs;
 import com.google.common.primitives.Primitives;
 import com.google.gson.*;
 import com.google.gson.annotations.JsonAdapter;
+import com.google.gson.reflect.TypeToken;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.JsonWriter;
+import com.jcraft.jsch.Session;
 import com.sensetime.test.java.test.common.HttpRequestSender;
 import net.lingala.zip4j.exception.ZipException;
 import net.lingala.zip4j.model.ZipParameters;
@@ -19,11 +21,15 @@ import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.io.Charsets;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.StringEscapeUtils;
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.validator.routines.UrlValidator;
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.*;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.entity.ContentType;
@@ -35,6 +41,14 @@ import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.internal.storage.file.FileRepository;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
+import org.eclipse.jgit.transport.JschConfigSessionFactory;
+import org.eclipse.jgit.transport.OpenSshConfig;
+import org.eclipse.jgit.transport.SshSessionFactory;
 import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
@@ -50,6 +64,7 @@ import java.beans.Transient;
 import java.io.*;
 import java.lang.reflect.Field;
 import java.net.MulticastSocket;
+import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
@@ -57,6 +72,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.attribute.BasicFileAttributeView;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileAttributeView;
+import java.nio.file.attribute.FileTime;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -70,6 +91,8 @@ import java.util.zip.ZipOutputStream;
  */
 public class Main {
     private static final Logger LOGGER = LoggerFactory.getLogger(Main.class);
+    private static final Gson GSON = new Gson();
+    private static CloseableHttpClient HTTP_CLIENT;
 
     private static class WebCrawler extends Thread {
         private int fileNumberStart;
@@ -290,11 +313,27 @@ public class Main {
     }
 
     public static void main(String[] args) throws Exception {
-        int i = 0;
-        while (true) {
-            LOGGER.info(String.format("%d", i++));
-            Thread.sleep(100);
-        }
+        String str = "{+%*}";
+        System.out.println(str);
+        System.out.println(URLDecoder.decode(str, "UTF-8"));
+    }
+
+    private static void testJgit() throws Exception {
+        SshSessionFactory.setInstance(new JschConfigSessionFactory() {
+            @Override
+            protected void configure(OpenSshConfig.Host hc, Session session) {
+                session.setConfig("StrictHostKeyChecking", "no");
+            }
+        });
+
+        String gitRepoUri = "git@v9.git.n.xiaomi.com:tangmingming/test.git";
+        Git git = Git.cloneRepository().setURI(gitRepoUri).setDirectory(new File("/Users/hunttang/Projects/temp/test")).call();
+        FileUtils.copyFile(new File("/Users/hunttang/Projects/chatbot/.gitignore"),
+                           new File("/Users/hunttang/Projects/temp/test/.gitignore"), false);
+        git.add().addFilepattern("/Users/hunttang/Projects/temp/test/").call();
+        git.commit().setCommitter("Robot", "robot@xiaomi.com").setMessage("Committed by jgit").setAllowEmpty(false).call();
+        git.push().call();
+        git.close();
     }
 
     private static void testEncryptedZipFile() throws IOException, ZipException {

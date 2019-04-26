@@ -1,8 +1,0 @@
-{
-  "ip": "0.0.0.0",
-  "httpPort": 9800,
-  "enableHttp2": false,
-  "enableHttps": false,
-  "enableHttp": true,
-  "enableRegistry": false
-}
