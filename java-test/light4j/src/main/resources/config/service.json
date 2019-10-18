@@ -1,0 +1,14 @@
+{
+  "singletons": [
+    {
+      "com.networknt.server.StartupHookProvider": [
+        "com.sensetime.test.java.test.light4j.ServiceStartupHookProvider"
+      ]
+    },
+    {
+      "com.networknt.server.HandlerProvider": [
+        "com.sensetime.test.java.test.light4j.PathHandlerProvider"
+      ]
+    }
+  ]
+}
