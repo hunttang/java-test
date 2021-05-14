@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.sensetime.test.common";
+option java_outer_classname = "ProtoTest";
+
+// C++: as a namespace
+// Java: as a package except explicitly provide "option java_package"
+package com.sensetime.test.common;
+
+message SimpleRequest {
+  string field = 1;
+}
+
+message SimpleResponse {
+  string reply = 1;
+}
+
+service SpringTest {
+  rpc SpringTestMethod(SimpleRequest) returns (SimpleResponse) {}
+}

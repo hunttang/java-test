@@ -9,11 +9,14 @@ nohup.out
 *.crc
 *.iml
 *.pyc
+*.log
+*.log.gz
 
 .DS_Store
 .gradle
 .idea
 
+generated
 build
 target
 gen-loc
@@ -24,3 +27,4 @@ classes
 log
 logs
 audit
+
